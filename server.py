@@ -1,0 +1,219 @@
+from flask import Flask, jsonify, request
+import sqlite3
+from flask_cors import CORS
+from datetime import datetime
+
+import click
+import bcrypt
+
+app = Flask(__name__)
+CORS(app)
+
+# path to SQLite database file
+DB_FILE = "appdata.db"
+
+# helper function to execute queries
+def query_db(query, args=(), fetchone=False, fetchall=False, commit=False):
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(query,args)
+        if commit:
+            conn.commit()
+        if fetchone:
+            return cursor.fetchone()
+        if fetchall:
+            return cursor.fetchall()
+        return None
+
+# API endpoints
+# 1. initialize dataase
+@app.route('/initialize', methods=['POST'])
+def initialize_database():
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                password TEXT,
+                wallColor TEXT,
+                jarColor TEXT,
+                friendList TEXT DEFAULT ''
+            );
+                                 
+            CREATE TABLE IF NOT EXISTS screams (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                userID TEXT NOT NULL,
+                categoryIndex INTEGER,
+                content TEXT,
+                screamDate TEXT,
+                FOREIGN KEY (userID) REFERENCES users(id) ON DELETE CASCADE
+            );
+            """)
+        return jsonify({"message": "Database initialized"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# login
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    id = data.get('id')
+    password = data.get('password')
+
+    if not id or not password:
+        return jsonify({"error": "Missing Credentials"}), 400
+
+    user = query_db("SELECT * FROM users WHERE id = ?", (id,), fetchone = True)
+
+    if user and bcrypt.checkpw(password.encode(), user["password"].encode()):
+        return jsonify({"message": "Login successful"}), 200
+    else:
+        return jsonify({"error": "Invalid ID or password"}), 401
+
+
+
+# 2. save user (friendlist not updated because it has other func for that purpose)
+@app.route('/users', methods=['POST'])
+def save_user():
+    data = request.json
+    id = data['id']
+    username = data['username']
+    wallColor = data['wallColor']
+    jarColor = data['jarColor']
+    password = data['password']
+
+    hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+    try:
+        query_db("""
+        INSERT INTO users (id, username, password, wallColor, jarColor, friendList)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            username = excluded.username,
+            password = excluded.password,
+            wallColor = excluded.wallColor,
+            jarColor = excluded.jarColor,
+            friendList = COALESCE(users.friendList, excluded.friendList)
+        """, (id, username, hashed_pw, wallColor, jarColor), commit=True)
+        return jsonify({"message": "User saved successfully"}), 200
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "id already exists"}), 400
+
+# 3. Load user
+@app.route('/users/<user_id>', methods=['GET'])
+def load_user(user_id):
+    user = query_db("SELECT * FROM users WHERE id = ?", (user_id,), fetchone = True)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify(dict(user)), 200
+
+# 4. Check if User Exists
+@app.route('/users/<user_id>/exists', methods=['GET'])
+def user_exists(user_id):
+    count = query_db("SELECT COUNT(*) AS count FROM users WHERE id = ?", (user_id,), fetchone=True)
+    exists = count[0] > 0
+    return jsonify({"exists": exists}), 200
+
+# 5. Save Scream
+@app.route('/screams', methods=['POST'])
+def save_scream():
+    data = request.json
+    userID = data['userID']
+    categoryIndex = data['categoryIndex']
+    content = data['content']
+    screamDate = data['screamDate']
+
+    try:
+        query_db("""
+        INSERT INTO screams (userID, categoryIndex, content, screamDate)
+        VALUES (?, ?, ?, ?)
+        """, (userID, categoryIndex, content, screamDate), commit=True)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+# 6. Load Screams
+@app.route('/screams/<user_id>', methods=['GET'])
+def load_screams(user_id):
+    screams = query_db("""
+    SELECT id, categoryIndex, content, screamDate FROM screams WHERE userID = ?
+    """, (user_id,), fetchall=True)
+    return jsonify([dict(scream) for scream in screams]), 200
+
+# 7. Get Username by User ID
+@app.route('/users/<user_id>/username', methods=['GET'])
+def get_username_by_user_id(user_id):
+    username = query_db("SELECT username FROM users WHERE id = ?", (user_id,), fetchone=True)
+    if not username:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify({"username": username['username']}), 200
+
+# 8. add friend
+@app.route('/add-friend', methods=['POST'])
+def add_friend():
+    data = request.get_json()
+    myUserID = data.get('myUserID')
+    friendUserID = data.get('friendUserID')
+
+    if not myUserID or not friendUserID:
+        return jsonify({"error": "Missing data"}), 400
+
+
+    user = query_db("SELECT friendList FROM users WHERE id = ?", (myUserID,), fetchone = True)
+    if user is None:
+        return jsonify({"error": "User not found"}), 404
+    
+    friend_list = user[0].split(',') if user[0] else []
+    if friendUserID not in friend_list:
+        friend_list.append(friendUserID)
+        new_friend_list = ','.join(friend_list)
+
+        query_db("UPDATE users SET friendList = ? WHERE id = ?", (new_friend_list, myUserID), commit=True)
+        return jsonify({"message": "Freind added successfully"}), 200
+    else:
+        return jsonify({"message": "Friend already exists"}), 200
+
+# 9. delete friend
+@app.route('/delete-friend', methods=['DELETE'])
+def delete_friend():
+    data = request.get_json()
+    myUserID = data.get('myUserID')
+    friendUserID = data.get('friendUserID')
+
+    if not myUserID or not friendUserID:
+        return jsonify({"error": "Missing data"}), 400
+
+    user = query_db("SELECT friendList FROM users WHERE id = ?", (myUserID,), fetchone=True)
+    if user is None:
+        return jsonify({"error": "User not found"}), 404
+    
+    friend_list = user[0].split(',') if user[0] else[]
+    if friendUserID in friend_list:
+        friend_list.remove(friendUserID)
+        new_friend_list = ','.join(friend_list)
+
+        query_db("UPDATE users SET friendList = ? WHERE id = ?", (new_friend_list, myUserID), commit=True)
+        return jsonify({"message": "Friend deleted Successfully"}), 200
+    else:
+        return jsonify({"message": "Friend not in list"}), 404
+
+# 10. search for users (to add friend)    
+@app.route('/friend-search', methods=['GET'])
+def friend_search():
+    username = request.args.get('username')
+    if not username:
+        return jsonify({"error": "Username not provided"})
+    
+    users = query_db("""
+    SELECT id, wallColor, jarColor, friendList FROM users WHERE username = ?
+    """, (username,), fetchall=True)
+    
+    return jsonify([dict(user) for user in users]), 200
+
+
+if __name__ == '__main__':
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
