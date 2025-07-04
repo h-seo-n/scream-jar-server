@@ -167,7 +167,7 @@ def load_user(user_id):
 @app.route('/users/<user_id>/exists', methods=['GET'])
 def user_exists(user_id):
     count = query_db("SELECT COUNT(*) AS count FROM users WHERE id = %s", (user_id,), fetchone=True)
-    exists = count[0] > 0
+    exists = count["count"] > 0
     return jsonify({"exists": exists}), 200
 
 # 5. Save Scream
@@ -218,7 +218,7 @@ def add_friend():
     if user is None:
         return jsonify({"error": "User not found"}), 404
     
-    friend_list = user[0].split(',') if user[0] else []
+    friend_list = user["friendList"].split(',') if user["friendList"] else []
     if friendUserID not in friend_list:
         friend_list.append(friendUserID)
         new_friend_list = ','.join(friend_list)
