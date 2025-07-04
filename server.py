@@ -66,18 +66,18 @@ def initialize_database():
                 id TEXT PRIMARY KEY,
                 username TEXT NOT NULL,
                 password TEXT,
-                wallColor TEXT,
-                friendList TEXT DEFAULT ''
+                wallcolor TEXT,
+                friendlist TEXT DEFAULT ''
             );
         """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS screams (
                 id SERIAL PRIMARY KEY,
-                userID TEXT NOT NULL,
-                categoryIndex INTEGER,
+                userid TEXT NOT NULL,
+                categoryindex INTEGER,
                 content TEXT,
-                screamDate TEXT,
-                FOREIGN KEY (userID) REFERENCES users(id) ON DELETE CASCADE
+                screamdate TEXT,
+                FOREIGN KEY (userid) REFERENCES users(id) ON DELETE CASCADE
             );
         """)
         conn.commit()
@@ -146,13 +146,13 @@ def save_user():
 
     try:
         query_db("""
-        INSERT INTO users (id, username, password, wallColor, friendList)
+        INSERT INTO users (id, username, password, wallcolor, friendlist)
         VALUES (%s, %s, %s, %s, %s)
         ON CONFLICT(id) DO UPDATE SET
             username = excluded.username,
             password = excluded.password,
-            wallColor = excluded.wallColor,
-            friendList = COALESCE(users.friendList, excluded.friendList)
+            wallColor = excluded.wallcolor,
+            friendList = COALESCE(users.friendlist, excluded.friendlist)
         """, (id, username, hashed_pw, wallColor, ""), commit=True)
         return jsonify({"message": "User saved successfully"}), 200
     except psycopg2.errors.UniqueViolation:
@@ -171,12 +171,14 @@ def load_user(user_id):
         return jsonify({"error": "User not found"}), 404
     return jsonify(dict(user)), 200
 
+
 # 4. Check if User Exists
 @app.route('/users/<user_id>/exists', methods=['GET'])
 def user_exists(user_id):
     count = query_db("SELECT COUNT(*) AS count FROM users WHERE id = %s", (user_id,), fetchone=True)
     exists = count["count"] > 0
     return jsonify({"exists": exists}), 200
+
 
 # 5. Save Scream
 @app.route('/screams', methods=['POST'])
@@ -189,7 +191,7 @@ def save_scream():
 
     try:
         query_db("""
-        INSERT INTO screams (userID, categoryIndex, content, screamDate)
+        INSERT INTO screams (userid, categoryindex, content, screamdate)
         VALUES (%s, %s, %s, %s)
         """, (userID, categoryIndex, content, screamDate), commit=True)
     except Exception as e:
@@ -198,13 +200,16 @@ def save_scream():
         return jsonify({"error": str(e)}), 500
     return jsonify({"message": "Scream saved"}), 200
 
+
+
 # 6. Load Screams
 @app.route('/screams/<user_id>', methods=['GET'])
 def load_screams(user_id):
     screams = query_db("""
-    SELECT id, categoryIndex, content, screamDate FROM screams WHERE userID = %s
+    SELECT id, categoryindex, content, screamdate FROM screams WHERE userid = %s
     """, (user_id,), fetchall=True)
     return jsonify([dict(scream) for scream in screams]), 200
+
 
 # 7. Get Username by User ID
 @app.route('/users/<user_id>/username', methods=['GET'])
@@ -213,6 +218,7 @@ def get_username_by_user_id(user_id):
     if not username:
         return jsonify({"error": "User not found"}), 404
     return jsonify({"username": username['username']}), 200
+
 
 # 8. add friend
 @app.route('/add-friend', methods=['POST'])
@@ -224,20 +230,21 @@ def add_friend():
     if not myUserID or not friendUserID:
         return jsonify({"error": "Missing data"}), 400
 
-
-    user = query_db("SELECT friendList FROM users WHERE id = %s", (myUserID,), fetchone = True)
+    user = query_db("SELECT friendlist FROM users WHERE id = %s", (myUserID,), fetchone = True)
     if user is None:
         return jsonify({"error": "User not found"}), 404
     
-    friend_list = user["friendList"].split(',') if user["friendList"] else []
+    friend_list = user["friendlist"].split(',') if user["friendlist"] else []
     if friendUserID not in friend_list:
         friend_list.append(friendUserID)
         new_friend_list = ','.join(friend_list)
 
-        query_db("UPDATE users SET friendList = %s WHERE id = %s", (new_friend_list, myUserID), commit=True)
+        query_db("UPDATE users SET friendlist = %s WHERE id = %s", (new_friend_list, myUserID), commit=True)
         return jsonify({"message": "Freind added successfully"}), 200
     else:
         return jsonify({"message": "Friend already exists"}), 200
+
+
 
 # 9. delete friend
 @app.route('/delete-friend', methods=['DELETE'])
@@ -249,7 +256,7 @@ def delete_friend():
     if not myUserID or not friendUserID:
         return jsonify({"error": "Missing data"}), 400
 
-    user = query_db("SELECT friendList FROM users WHERE id = %s", (myUserID,), fetchone=True)
+    user = query_db("SELECT friendlist FROM users WHERE id = %s", (myUserID,), fetchone=True)
     if user is None:
         return jsonify({"error": "User not found"}), 404
     
@@ -258,10 +265,11 @@ def delete_friend():
         friend_list.remove(friendUserID)
         new_friend_list = ','.join(friend_list)
 
-        query_db("UPDATE users SET friendList = %s WHERE id = %s", (new_friend_list, myUserID), commit=True)
+        query_db("UPDATE users SET friendlist = %s WHERE id = %s", (new_friend_list, myUserID), commit=True)
         return jsonify({"message": "Friend deleted Successfully"}), 200
     else:
         return jsonify({"message": "Friend not in list"}), 404
+
 
 # 10. search for users (to add friend)    
 @app.route('/friend-search', methods=['GET'])
@@ -271,10 +279,11 @@ def friend_search():
         return jsonify({"error": "Username not provided"})
     
     users = query_db("""
-    SELECT id, wallColor, friendList FROM users WHERE username = %s
+    SELECT id, wallcolor, friendlist FROM users WHERE username = %s
     """, (username,), fetchall=True)
     
     return jsonify([dict(user) for user in users]), 200
+
 
 # 11. (added) for save function that isn't for register
 @app.route('/users/no-password', methods=['POST'])
@@ -286,11 +295,11 @@ def save_user_no_password():
 
     try:
         query_db("""
-        INSERT INTO users (id, username, wallColor)
+        INSERT INTO users (id, username, wallcolor)
         VALUES (%s, %s, %s)
         ON CONFLICT(id) DO UPDATE SET
             username = EXCLUDED.username,
-            wallColor = EXCLUDED.wallColor
+            wallColor = EXCLUDED.wallcolor
         """, (id, username, wallColor), commit=True)
 
         return jsonify({"message": "User saved (no password)"}), 200
