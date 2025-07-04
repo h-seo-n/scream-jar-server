@@ -1,5 +1,9 @@
 from flask import Flask, jsonify, request
-import sqlite3
+
+# import sqlite3
+import psycopg2
+import os
+
 from flask_cors import CORS
 from datetime import datetime
 
@@ -10,51 +14,102 @@ app = Flask(__name__)
 CORS(app)
 
 # path to SQLite database file
-DB_FILE = "appdata.db"
+# DB_FILE = "appdata.db"
+DB_URL = os.environ.get("DATABASE_URL")  # set this in Render
 
 # helper function to execute queries
+# def query_db(query, args=(), fetchone=False, fetchall=False, commit=False):
+#     with sqlite3.connect(DB_FILE) as conn:
+#         conn.row_factory = sqlite3.Row
+#         cursor = conn.cursor()
+#         cursor.execute(query,args)
+#         if commit:
+#             conn.commit()
+#         if fetchone:
+#             return cursor.fetchone()
+#         if fetchall:
+#             return cursor.fetchall()
+#         return None
 def query_db(query, args=(), fetchone=False, fetchall=False, commit=False):
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute(query,args)
-        if commit:
-            conn.commit()
-        if fetchone:
-            return cursor.fetchone()
-        if fetchall:
-            return cursor.fetchall()
-        return None
+    conn = psycopg2.connect(DB_URL)
+    cursor = conn.cursor()
+    cursor.execute(query, args)
+    result = None
+    if fetchone:
+        row = cursor.fetchone()
+        if row:
+            colnames = [desc[0] for desc in cursor.description]
+            result = dict(zip(colnames, row))
+    elif fetchall:
+        rows = cursor.fetchall()
+        colnames = [desc[0] for desc in cursor.description]
+        result = [dict(zip(colnames, row)) for row in rows]
+    if commit:
+        conn.commit()
+    cursor.close()
+    conn.close()
+    return result
+
+
 
 # API endpoints
 # 1. initialize dataase
 @app.route('/initialize', methods=['POST'])
 def initialize_database():
     try:
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.executescript("""
+        conn = psycopg2.connect(DB_URL)
+        cursor = conn.cursor()
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
                 username TEXT NOT NULL,
                 password TEXT,
                 wallColor TEXT,
-                jarColor TEXT,
                 friendList TEXT DEFAULT ''
             );
-                                 
+        """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS screams (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 userID TEXT NOT NULL,
                 categoryIndex INTEGER,
                 content TEXT,
                 screamDate TEXT,
                 FOREIGN KEY (userID) REFERENCES users(id) ON DELETE CASCADE
             );
-            """)
-        return jsonify({"message": "Database initialized"}), 200
+        """)
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"message": "PostgreSQL tables initialized"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# def initialize_database():
+#     try:
+#         with sqlite3.connect(DB_FILE) as conn:
+#             cursor = conn.cursor()
+#             cursor.executescript("""
+#             CREATE TABLE IF NOT EXISTS users (
+#                 id TEXT PRIMARY KEY,
+#                 username TEXT NOT NULL,
+#                 password TEXT,
+#                 wallColor TEXT,
+#                 friendList TEXT DEFAULT ''
+#             );
+                                 
+#             CREATE TABLE IF NOT EXISTS screams (
+#                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+#                 userID TEXT NOT NULL,
+#                 categoryIndex INTEGER,
+#                 content TEXT,
+#                 screamDate TEXT,
+#                 FOREIGN KEY (userID) REFERENCES users(id) ON DELETE CASCADE
+#             );
+#             """)
+#         return jsonify({"message": "Database initialized"}), 200
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
 
 # login
 @app.route('/login', methods=['POST'])
@@ -82,22 +137,20 @@ def save_user():
     id = data['id']
     username = data['username']
     wallColor = data['wallColor']
-    jarColor = data['jarColor']
     password = data['password']
 
     hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
     try:
         query_db("""
-        INSERT INTO users (id, username, password, wallColor, jarColor, friendList)
+        INSERT INTO users (id, username, password, wallColor, friendList)
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             username = excluded.username,
             password = excluded.password,
             wallColor = excluded.wallColor,
-            jarColor = excluded.jarColor,
             friendList = COALESCE(users.friendList, excluded.friendList)
-        """, (id, username, hashed_pw, wallColor, jarColor), commit=True)
+        """, (id, username, hashed_pw, wallColor), commit=True)
         return jsonify({"message": "User saved successfully"}), 200
     except sqlite3.IntegrityError:
         return jsonify({"error": "id already exists"}), 400
@@ -207,13 +260,11 @@ def friend_search():
         return jsonify({"error": "Username not provided"})
     
     users = query_db("""
-    SELECT id, wallColor, jarColor, friendList FROM users WHERE username = ?
+    SELECT id, wallColor, friendList FROM users WHERE username = ?
     """, (username,), fetchall=True)
     
     return jsonify([dict(user) for user in users]), 200
 
 
 if __name__ == '__main__':
-    import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True)
