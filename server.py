@@ -3,6 +3,7 @@ from flask import Flask, jsonify, request
 # import sqlite3
 import psycopg2
 import os
+from psycopg2 import errors
 
 from flask_cors import CORS
 from datetime import datetime
@@ -138,6 +139,7 @@ def save_user():
     username = data['username']
     wallColor = data['wallColor']
     password = data['password']
+    # no friendlist!
 
     hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
@@ -150,11 +152,12 @@ def save_user():
             password = excluded.password,
             wallColor = excluded.wallColor,
             friendList = COALESCE(users.friendList, excluded.friendList)
-        """, (id, username, hashed_pw, wallColor), commit=True)
+        """, (id, username, hashed_pw, wallColor, ""), commit=True)
         return jsonify({"message": "User saved successfully"}), 200
-    except sqlite3.IntegrityError:
+    except psycopg2.errors.UniqueViolation:
         return jsonify({"error": "id already exists"}), 400
-
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 # 3. Load user
 @app.route('/users/<user_id>', methods=['GET'])
 def load_user(user_id):
