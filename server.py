@@ -31,6 +31,7 @@ DB_URL = os.environ.get("DATABASE_URL")  # set this in Render
 #         if fetchall:
 #             return cursor.fetchall()
 #         return None
+
 def query_db(query, args=(), fetchone=False, fetchall=False, commit=False):
     conn = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
@@ -158,6 +159,7 @@ def save_user():
         return jsonify({"error": "id already exists"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 # 3. Load user
 @app.route('/users/<user_id>', methods=['GET'])
 def load_user(user_id):
@@ -268,6 +270,26 @@ def friend_search():
     
     return jsonify([dict(user) for user in users]), 200
 
+# 11. (added) for save function that isn't for register
+@app.route('/users/no-password', methods=['POST'])
+def save_user_no_password():
+    data = request.json
+    id = data['id']
+    username = data['username']
+    wallColor = data['wallColor']
+
+    try:
+        query_db("""
+        INSERT INTO users (id, username, wallColor)
+        VALUES (%s, %s, %s)
+        ON CONFLICT(id) DO UPDATE SET
+            username = EXCLUDED.username,
+            wallColor = EXCLUDED.wallColor
+        """, (id, username, wallColor), commit=True)
+
+        return jsonify({"message": "User saved (no password)"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     #    app.run(debug=True)
