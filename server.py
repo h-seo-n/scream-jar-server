@@ -158,7 +158,10 @@ def save_user():
     except psycopg2.errors.UniqueViolation:
         return jsonify({"error": "id already exists"}), 400
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+    return jsonify({"message": "user saved"}), 200
 
 # 3. Load user
 @app.route('/users/<user_id>', methods=['GET'])
@@ -190,8 +193,11 @@ def save_scream():
         VALUES (%s, %s, %s, %s)
         """, (userID, categoryIndex, content, screamDate), commit=True)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-    
+    return jsonify({"message": "Scream saved"}), 200
+
 # 6. Load Screams
 @app.route('/screams/<user_id>', methods=['GET'])
 def load_screams(user_id):
