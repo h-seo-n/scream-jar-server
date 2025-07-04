@@ -121,7 +121,7 @@ def login():
     if not id or not password:
         return jsonify({"error": "Missing Credentials"}), 400
 
-    user = query_db("SELECT * FROM users WHERE id = ?", (id,), fetchone = True)
+    user = query_db("SELECT * FROM users WHERE id = %s", (id,), fetchone = True)
 
     if user and bcrypt.checkpw(password.encode(), user["password"].encode()):
         return jsonify({"message": "Login successful"}), 200
@@ -144,7 +144,7 @@ def save_user():
     try:
         query_db("""
         INSERT INTO users (id, username, password, wallColor, friendList)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s)
         ON CONFLICT(id) DO UPDATE SET
             username = excluded.username,
             password = excluded.password,
@@ -158,7 +158,7 @@ def save_user():
 # 3. Load user
 @app.route('/users/<user_id>', methods=['GET'])
 def load_user(user_id):
-    user = query_db("SELECT * FROM users WHERE id = ?", (user_id,), fetchone = True)
+    user = query_db("SELECT * FROM users WHERE id = %s", (user_id,), fetchone = True)
     if not user:
         return jsonify({"error": "User not found"}), 404
     return jsonify(dict(user)), 200
@@ -166,7 +166,7 @@ def load_user(user_id):
 # 4. Check if User Exists
 @app.route('/users/<user_id>/exists', methods=['GET'])
 def user_exists(user_id):
-    count = query_db("SELECT COUNT(*) AS count FROM users WHERE id = ?", (user_id,), fetchone=True)
+    count = query_db("SELECT COUNT(*) AS count FROM users WHERE id = %s", (user_id,), fetchone=True)
     exists = count[0] > 0
     return jsonify({"exists": exists}), 200
 
@@ -182,7 +182,7 @@ def save_scream():
     try:
         query_db("""
         INSERT INTO screams (userID, categoryIndex, content, screamDate)
-        VALUES (?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s)
         """, (userID, categoryIndex, content, screamDate), commit=True)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -191,14 +191,14 @@ def save_scream():
 @app.route('/screams/<user_id>', methods=['GET'])
 def load_screams(user_id):
     screams = query_db("""
-    SELECT id, categoryIndex, content, screamDate FROM screams WHERE userID = ?
+    SELECT id, categoryIndex, content, screamDate FROM screams WHERE userID = %s
     """, (user_id,), fetchall=True)
     return jsonify([dict(scream) for scream in screams]), 200
 
 # 7. Get Username by User ID
 @app.route('/users/<user_id>/username', methods=['GET'])
 def get_username_by_user_id(user_id):
-    username = query_db("SELECT username FROM users WHERE id = ?", (user_id,), fetchone=True)
+    username = query_db("SELECT username FROM users WHERE id = %s", (user_id,), fetchone=True)
     if not username:
         return jsonify({"error": "User not found"}), 404
     return jsonify({"username": username['username']}), 200
@@ -214,7 +214,7 @@ def add_friend():
         return jsonify({"error": "Missing data"}), 400
 
 
-    user = query_db("SELECT friendList FROM users WHERE id = ?", (myUserID,), fetchone = True)
+    user = query_db("SELECT friendList FROM users WHERE id = %s", (myUserID,), fetchone = True)
     if user is None:
         return jsonify({"error": "User not found"}), 404
     
@@ -223,7 +223,7 @@ def add_friend():
         friend_list.append(friendUserID)
         new_friend_list = ','.join(friend_list)
 
-        query_db("UPDATE users SET friendList = ? WHERE id = ?", (new_friend_list, myUserID), commit=True)
+        query_db("UPDATE users SET friendList = %s WHERE id = %s", (new_friend_list, myUserID), commit=True)
         return jsonify({"message": "Freind added successfully"}), 200
     else:
         return jsonify({"message": "Friend already exists"}), 200
@@ -238,7 +238,7 @@ def delete_friend():
     if not myUserID or not friendUserID:
         return jsonify({"error": "Missing data"}), 400
 
-    user = query_db("SELECT friendList FROM users WHERE id = ?", (myUserID,), fetchone=True)
+    user = query_db("SELECT friendList FROM users WHERE id = %s", (myUserID,), fetchone=True)
     if user is None:
         return jsonify({"error": "User not found"}), 404
     
@@ -247,7 +247,7 @@ def delete_friend():
         friend_list.remove(friendUserID)
         new_friend_list = ','.join(friend_list)
 
-        query_db("UPDATE users SET friendList = ? WHERE id = ?", (new_friend_list, myUserID), commit=True)
+        query_db("UPDATE users SET friendList = %s WHERE id = %s", (new_friend_list, myUserID), commit=True)
         return jsonify({"message": "Friend deleted Successfully"}), 200
     else:
         return jsonify({"message": "Friend not in list"}), 404
@@ -260,13 +260,13 @@ def friend_search():
         return jsonify({"error": "Username not provided"})
     
     users = query_db("""
-    SELECT id, wallColor, friendList FROM users WHERE username = ?
+    SELECT id, wallColor, friendList FROM users WHERE username = %s
     """, (username,), fetchall=True)
     
     return jsonify([dict(user) for user in users]), 200
 
 
 if __name__ == '__main__':
-    #app.run(debug=True)
+    #    app.run(debug=True)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
