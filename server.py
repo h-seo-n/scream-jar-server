@@ -279,7 +279,7 @@ def friend_search():
         return jsonify({"error": "UserID not provided"})
     
     user = query_db("""
-    SELECT username, wallcolor, friendlist FROM users WHERE id = %s
+    SELECT id, username, wallcolor, friendlist FROM users WHERE id = %s
     """, (userID,), fetchone=True)
 
     if not user:
