@@ -274,7 +274,7 @@ def delete_friend():
 # 10. search for users (to add friend)    
 @app.route('/friend-search', methods=['GET'])
 def friend_search():
-    userID = request.args.get('userID')
+    userID = request.args.get('id')
     if not userID:
         return jsonify({"error": "UserID not provided"})
     
