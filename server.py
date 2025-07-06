@@ -274,15 +274,17 @@ def delete_friend():
 # 10. search for users (to add friend)    
 @app.route('/friend-search', methods=['GET'])
 def friend_search():
-    username = request.args.get('username')
-    if not username:
-        return jsonify({"error": "Username not provided"})
+    userID = request.args.get('userID')
+    if not userID:
+        return jsonify({"error": "UserID not provided"})
     
     users = query_db("""
-    SELECT id, wallcolor, friendlist FROM users WHERE username = %s
-    """, (username,), fetchall=True)
-    
-    return jsonify([dict(user) for user in users]), 200
+    SELECT username, wallcolor, friendlist FROM users WHERE id = %s
+    """, (userID,), fetchone=True)
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify(user), 200
 
 
 # 11. (added) for save function that isn't for register
