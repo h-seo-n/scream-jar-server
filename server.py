@@ -209,9 +209,6 @@ def load_screams(user_id):
     SELECT id, categoryindex, content, screamdate FROM screams WHERE userid = %s
     """, (user_id,), fetchall=True)
 
-    print("Raw scream rows:", screams)
-    print("Processed scream list:", scream_list)
-
     return jsonify([dict(scream) for scream in screams]), 200
 
 
